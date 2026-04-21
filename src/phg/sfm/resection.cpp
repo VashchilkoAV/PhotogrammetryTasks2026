@@ -95,7 +95,7 @@ namespace {
         const double singlePointInlierProbability = 0.1893, successProbability = 0.99; // maybe singlePointInlierProbability should be set to lower value
         // const int n_trials = (int) (log(1 - successProbability) / log(1 - pow(singlePointInlierProbability, n_points_fit)));
         const int n_trials = 100000;
-        const int n_trials = 10000; // from task04
+        // const int n_trials = 10000; // from task04
 
         const double threshold_px = 3;
 

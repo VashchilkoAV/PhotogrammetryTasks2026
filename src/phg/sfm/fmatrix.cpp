@@ -145,6 +145,8 @@ namespace {
         // const int n_trials = (int) (log(1 - successProbability) / log(1 - pow(singlePointInlierProbability, n_points_fit)));
         const int n_trials = 100000; // works
         // const int n_trials = 10000; // from task04
+        // const int n_trials = 10000; // works all except last
+        // const int n_trials = 75000; // works all except last two
 
         const int n_samples = n_points_fit;
         uint64_t seed = 1;
@@ -166,7 +168,12 @@ namespace {
             cv::Matx33d F = estimateFMatrixDLT(ms0, ms1, n_samples);
 
             // denormalize TODO
+            // F = F.inv(); 
+            // F = TN1 * F * TN0;
             F = TN1.t() * F * TN0;
+            // F = TN0 * F * TN1;
+            // F = TN0.inv() * F * TN1;
+            // F = TN1.inv() * F * TN0; // or maybe
             
 
             int support = 0;

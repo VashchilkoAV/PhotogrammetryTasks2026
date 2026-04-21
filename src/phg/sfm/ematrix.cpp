@@ -207,6 +207,7 @@ void phg::decomposeUndistortedPMatrix(cv::Matx33d &R, cv::Vec3d &O, const cv::Ma
     O(1) = O_mat(1);
     O(2) = O_mat(2);
 
+    // check R should be transposed!
     if (cv::determinant(R) < 0) {
         R *= -1;   
     }

@@ -4,6 +4,17 @@
 #include <libutils/bbox2.h>
 #include <iostream>
 
+void print_homography_matrix(const cv::Mat& mat, size_t idx) {
+        printf("H_%lu=(\n", idx);
+        for (size_t i = 0; i < mat.size().height; i++) {
+            for (size_t j = 0; j < mat.size().width; j++) {
+                printf("%f, ", mat.at<double>(i, j));
+            }
+            printf("\n");
+        }
+        printf(")\n");
+    }
+
 /*
  * imgs - список картинок
  * parent - список индексов, каждый индекс указывает, к какой картинке должна быть приклеена текущая картинка
@@ -89,6 +100,12 @@ cv::Mat phg::stitchPanorama(const std::vector<cv::Mat> &imgs,
 
     std::vector<cv::Mat> Hs_inv;
     std::transform(Hs.begin(), Hs.end(), std::back_inserter(Hs_inv), [&](const cv::Mat &H){ return H.inv(); });
+
+    
+
+    for (int i = 0; i < n_images; i++) {
+        print_homography_matrix(Hs[i], i);
+    }
 
 #pragma omp parallel for
     for (int y = 0; y < result_height; ++y) {

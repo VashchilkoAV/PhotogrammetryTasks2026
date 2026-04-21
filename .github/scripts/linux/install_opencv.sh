@@ -17,4 +17,4 @@ echo "Building OpenCV..."
 make -j"$(nproc)"
 
 echo "Installing OpenCV..."
-sudo make install
+make install

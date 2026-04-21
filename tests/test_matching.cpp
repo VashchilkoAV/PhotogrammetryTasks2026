@@ -24,7 +24,7 @@
 #define ENABLE_GPU_BRUTEFORCE_MATCHER 0
 
 // TODO disable for local testing but do not commit
-#define SERVER_TESTING 1
+#define SERVER_TESTING 0
 
 #if SERVER_TESTING && !defined(__linux__)
 #undef ENABLE_GPU_BRUTEFORCE_MATCHER

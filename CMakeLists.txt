@@ -5,6 +5,8 @@ project(Photogrammetry)
 set(CMAKE_CXX_STANDARD 17)
 
 add_subdirectory(libs)
+add_compile_options(-Wno-narrowing)
+
 
 # OpenMP позволит распараллеливать циклы на все ядра процессора простыми директивами
 find_package(OpenMP)

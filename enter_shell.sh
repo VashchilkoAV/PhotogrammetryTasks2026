@@ -1,0 +1,1 @@
+docker exec -it photogrammetrytasks2026-ubuntu_dev-1 /bin/bash

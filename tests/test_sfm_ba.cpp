@@ -22,7 +22,7 @@
 #include <ceres/ceres.h>
 
 // TODO включите Bundle Adjustment (но из любопытства посмотрите как ведет себя реконструкция без BA например для saharov32 без BA)
-#define ENABLE_BA                             0
+#define ENABLE_BA                             1
 
 // TODO когда заработает при малом количестве фотографий - увеличьте это ограничение до 100 чтобы попробовать обработать все фотографии (если же успешно будут отрабаывать только N фотографий - отправьте PR выставив здесь это N)
 #define NIMGS_LIMIT                           10 // сколько фотографий обрабатывать (можно выставить меньше чтобы ускорить экспериментирование, или в случае если весь датасет не выравнивается)
@@ -382,30 +382,48 @@ public:
                     const T* camera_intrinsics, // внутренние калибровочные параметры камеры: [5] = {k1, k2, f, cx, cy} (одни и те же для всех кадров, т.к. снято на одну и ту же камеру)
                     const T* point_global,      // 3D точка: [3]  = {x, y, z}
                     T* residuals) const {       // невязка:  [2]  = {dx, dy}
-        // TODO реализуйте функцию проекции, все нужно делать в типе T чтобы ceres-solver мог под него подставить как Jet (очень рекомендую посмотреть Jet.h - как класная статья из википедии!), так и double
+        // реализуйте функцию проекции, все нужно делать в типе T чтобы ceres-solver мог под него подставить как Jet (очень рекомендую посмотреть Jet.h - как класная статья из википедии!), так и double
 
         // translation[3] - сдвиг в локальную систему координат камеры
+        T pt_T[3] = {
+            point_global[0] - camera_extrinsics[0],
+            point_global[1] - camera_extrinsics[1],
+            point_global[2] - camera_extrinsics[2]
+        };
 
+        T pt_R[3];
         // rotation[3] - angle-axis rotation, поворачиваем точку point->p (чтобы перейти в локальную систему координат камеры)
+        ceres::AngleAxisRotatePoint(camera_extrinsics + 3, pt_T, pt_R);
         // подробнее см. https://en.wikipedia.org/wiki/Axis%E2%80%93angle_representation
         // (P.S. у камеры всмысле вращения три степени свободы)
-
+        
         // Проецируем точку на фокальную плоскость матрицы (т.е. плоскость Z=фокальная длина)
-
+        T pt_P[2] = {
+            pt_R[0] / pt_R[2],
+            pt_R[1] / pt_R[2]
+        };
 #if ENABLE_INSTRINSICS_K1_K2
         // k1, k2 - коэффициенты радиального искажения (radial distortion)
+        T r_squared = pt_P[0] * pt_P[0] + pt_P[1] * pt_P[1];
+        T r_fouth = r_squared * r_squared;
+        pt_P[0] *= (1. + camera_intrinsics[0] * r_squared + camera_intrinsics[1] * r_fouth);
+        pt_P[1] *= (1. + camera_intrinsics[0] * r_squared + camera_intrinsics[1] * r_fouth);
 #endif
 
         // Домножаем на f, тем самым переводя в пиксели
-
+        pt_P[0] *= camera_intrinsics[2];
+        pt_P[1] *= camera_intrinsics[2];
         // Из координат когда точка (0, 0) - центр оптической оси
         // Переходим в координаты когда точка (0, 0) - левый верхний угол картинки
         // cx, cy - координаты центра оптической оси (обычно это центр картинки, но часто он чуть смещен)
-
+        pt_P[0] += camera_intrinsics[3];
+        pt_P[1] += camera_intrinsics[4];
         // Теперь по спроецированным координатам не забудьте посчитать невязку репроекции
 
+        residuals[0] = pt_P[0] - observed_x;
+        residuals[1] = pt_P[1] - observed_y;
         return true;
-        // TODO сверьте эту функцию с вашей реализацией проекции в src/phg/core/calibration.cpp (они должны совпадать)
+        //  сверьте эту функцию с вашей реализацией проекции в src/phg/core/calibration.cpp (они должны совпадать)
     }
 protected:
     double observed_x;
@@ -435,8 +453,14 @@ void runBA(std::vector<vector3d> &tie_points,
     ASSERT_NEAR(calib.cy_, 0.0, 0.3 * calib.height());
 
     // внутренние калибровочные параметры камеры: [5] = {k1, k2, f, cx, cy}
-    // TODO: преобразуйте calib в блок параметров камеры (ее внутренних характеристик) для оптимизации в BA
-    double camera_intrinsics[5];
+    // : преобразуйте calib в блок параметров камеры (ее внутренних характеристик) для оптимизации в BA
+    double camera_intrinsics[5] = {
+        calib.k1_,
+        calib.k2_,
+        calib.f_,
+        calib.cx_ + calib.width_ * 0.5,
+        calib.cy_ + calib.height_ * 0.5
+    };
     std::cout << "Before BA ";
     printCamera(camera_intrinsics);
 
@@ -575,8 +599,13 @@ void runBA(std::vector<vector3d> &tie_points,
 
     std::cout << "After BA ";
     printCamera(camera_intrinsics);
-    // TODO преобразуйте параметры камеры в обратную сторону, чтобы последующая резекция учла актуальное представление о пространстве:
+    // преобразуйте параметры камеры в обратную сторону, чтобы последующая резекция учла актуальное представление о пространстве:
     // calib.* = camera_intrinsics[*];
+    calib.k1_ = camera_intrinsics[0];
+    calib.k2_ = camera_intrinsics[1];
+    calib.f_ = camera_intrinsics[2];
+    calib.cx_ = camera_intrinsics[3] - 0.5 * calib.height_;
+    calib.cy_ = camera_intrinsics[4] - 0.5 * calib.width_;
 
     ASSERT_NEAR(calib.f_ , DATASET_F, 0.2 * DATASET_F);
     ASSERT_NEAR(calib.cx_, 0.0, 0.3 * calib.width());

@@ -1,0 +1,7 @@
+services:
+    ubuntu_dev:
+        build:
+            dockerfile: Dockerfile
+        volumes:
+            - ./:/usr/src/PhotogrammetryTasks2026
+

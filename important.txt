@@ -1,0 +1,3 @@
+For compilers to find libomp you may need to set:
+  export LDFLAGS="-L/opt/homebrew/opt/libomp/lib"
+  export CPPFLAGS="-I/opt/homebrew/opt/libomp/include"
