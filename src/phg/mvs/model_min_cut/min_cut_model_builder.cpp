@@ -58,7 +58,12 @@ void MinCutModelBuilder::appendToTriangulation(
             // проверяем насколько ближайшая точка далеко
             vector3d np = from_cgal_point(nearest_vertex->point());
             // TODO 2001 appendToTriangulation(): реализуйте нормальную проверку объединять ли точку с уже добавленной ранее (с учетом r и MERGE_THRESHOLD_RADIUS_KOEF)
-            to_merge = false;
+            // if (r < MERGE_THRESHOLD_RADIUS_KOEF) {
+            if (std::sqrt(phg::norm2(np - p)) < r * MERGE_THRESHOLD_RADIUS_KOEF) {
+                to_merge = true;
+            } else {
+                to_merge = false;
+            }
         }
 
         vertex_info_t p_info(camera_id, color);
@@ -477,11 +482,17 @@ void MinCutModelBuilder::buildMesh(std::vector<cv::Vec3i>& mesh_faces, std::vect
 
             // TODO 2002 добавьте проверку - не опирается ли треугольник на одну из фиктивных вершин (лежащих на гранях вспомогательного bounding box), можете для этого использовать bb_min и bb_max, или добавьте явный флаг в каждую вершину
             // иначе говоря сделайте так чтобы такие треугольники не добавлялись в результирующую модель эти большие красные треугольники
-
+            bool lay_on_bb = false;
             for (int v_index = 1; v_index <= 3; ++v_index) {
                 auto vi = ci->vertex((i + v_index) % 4);
                 size_t& surface_vertex_id = vi->info().vertex_on_surface_id;
-                if (surface_vertex_id == VERTEX_NOT_ON_SURFACE_RESULT) {
+                auto pp = from_cgal_point(vi->point());
+                for (int check_i = 0; check_i < 3; ++check_i) {
+                    if (pp[check_i] <= bb_min[check_i] || pp[check_i] >= bb_max[check_i]) {
+                        lay_on_bb = true;
+                    }
+                }
+                if (surface_vertex_id == VERTEX_NOT_ON_SURFACE_RESULT && !lay_on_bb) {
                     surface_vertex_id = mesh_nvertices++;
                 }
                 face[v_index - 1] = surface_vertex_id;
@@ -490,8 +501,18 @@ void MinCutModelBuilder::buildMesh(std::vector<cv::Vec3i>& mesh_faces, std::vect
             // TODO 2003 некоторые треугольники выглядят темными в результирующей модели, проблема уходит если выключить в MeshLab освещение (кнопка желтой лампочка - Light on/off) которое учитывает нормаль, которая строится с учетом
             // порядка вершин треугольника (по часовой стрелке или против) иначе говоря оказывается что порядок обхода вершин в треугольнике не всегда корректен подумайте чем это вызывано и поправьте (лучше всего это делать посматривая на
             // картинку 'Figure 44.1' в документации https://doc.cgal.org/latest/Triangulation_3/index.html )
+            if (!lay_on_bb) {
+                vector3d p0 = from_cgal_point(ci->vertex(i % 4)->point());
+                vector3d p1 = from_cgal_point(ci->vertex((i + 1) % 4)->point());
+                vector3d p2 = from_cgal_point(ci->vertex((i + 2) % 4)->point());
+                vector3d p3 = from_cgal_point(ci->vertex((i + 3) % 4)->point());
+                vector3d normal = (p2 - p1).cross(p3 - p1);
+                if ((p1 - p0).dot(normal) < 0) {
+                    std::swap(face[0], face[1]);
+                }
 
-            mesh_faces.push_back(face);
+                mesh_faces.push_back(face);
+            }
         }
     }
 
