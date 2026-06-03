@@ -5,3 +5,4 @@
 
 #define SIGMA_RADIUS_COEFF              1.0
 #define N_SIGMAS_EXTEND_DIST            3.0
+#define SET_CAPACITIES_FOR_EXT_POINTS   1

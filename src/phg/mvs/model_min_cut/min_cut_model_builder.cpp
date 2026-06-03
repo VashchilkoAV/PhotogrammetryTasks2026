@@ -348,7 +348,70 @@ void MinCutModelBuilder::buildMesh(std::vector<cv::Vec3i>& mesh_faces, std::vect
                 rassert(intersected_facet != cgal_facet_t(), 2378213120305);
 
                 vector3d point0_extended = point0 + ray_from_camera * sigma * N_SIGMAS_EXTEND_DIST;
-                cell_handle_t cell_after_point_extended = proxy->triangulation.locate(to_cgal_point(point0_extended));
+                cell_handle_t cell_after_point_extended = intersected_facet.first;
+                // go backwards from camera up to point0 + ray_from_camera * sigma * N_SIGMAS_EXTEND_DIST
+                {
+                    std::vector<cgal_facet_t> cur_facets_backwards = facets_around_point0; // это актуальные на данный момент треугольники-кандидаты для пересечения с лучем
+                    double prev_distance = 0.0;
+                    size_t steps = 0;
+                    double prev_distance_to_camera = phg::norm(point0 - camera_center);
+                    double prev_capacity = 0.;
+
+                    while (cur_facets_backwards.size() > 0 && prev_distance <= sigma * N_SIGMAS_EXTEND_DIST) {
+                        const cgal_facet_t intersected_facet = chooseIntersectedFacet(proxy->triangulation, point0, point0_extended, cur_facets_backwards, false);
+                        rassert(intersected_facet != cgal_facet_t() || steps == 0,
+                            238192412849030373); // всегда должно находится пересечение (иначе это означает что мы потерялись по пути, вместо того чтобы однажды добраться до ячейки содержащей камеру)
+                        if (intersected_facet == cgal_facet_t() && steps == 0) {
+                            // единственное исключение - это когда отрезок из вершины до камеры не пересекает ни одного треугольника (т.е. когда камера находится в смежной с вершиной ячейке)
+                            break;
+                        }
+                        rassert(!proxy->triangulation.is_infinite(intersected_facet),
+                            23892141031273); // если треугольник бесконечный - с ним сложно работать, чтобы такого не случалось - мы добавили фиктивные точки - создали bounding box в insertBoundingBoxVertices()
+                        ++steps;
+
+                        // отзеркаливаем треугольник (грань ячейки), т.к. нам нужно обновить пропускную способность ребра по направлению от камеры к точке, а перешагивали по треугольникам мы по направлению от точки к камере
+                        const cgal_facet_t mirrored_intersected_facet = proxy->triangulation.mirror_facet(intersected_facet);
+
+                        // находим две ячейки (находящиеся по разные стороны от только что пересеченного треугольника):
+                        // следующая всмысле шагания ячейка (та что ближе к камере)
+                        const cell_handle_t next_cell = mirrored_intersected_facet.first;
+                        const int next_cell_facet_subindex = mirrored_intersected_facet.second;
+                        rassert(next_cell_facet_subindex >= 0 && next_cell_facet_subindex < 4, 23812948124029273);
+                        // предыдущая всмысле шагания ячейка (та что ближе к точке)
+                        const cell_handle_t prev_cell = next_cell->neighbor(next_cell_facet_subindex);
+
+                        // посчитаем какой путь мы уже прошли от точки, для этого надо найти расстояние от точки до места пересечения луча и треугольника (т.е. плоскости на которой он лежит, т.к. мы уже знаем что треугольник мы пересекаем лучем)
+                        plane_t facet_plane(intersected_facet);
+                        double distance_from_surface = facet_plane.distanceToIntersection(point0, ray_from_camera);
+                        double distance_to_camera2 = facet_plane.distanceToIntersection(camera_center, ray_from_camera);
+                        
+                        if (distance_from_surface < 0.0) {
+                            // плоскость и луч почти параллельны, вычисления ненадежны, расстояние до пересечения может быть странным (например монотонность может сломаться)
+                            // в таком случае оставим предыдущую оценку пройденного пути
+                            distance_from_surface = prev_distance;
+                        } else {
+                            rassert(distance_from_surface > prev_distance * 0.99, 2378924712421029373); // дополнительная проверка на разумность происходящего, мы удаляемся от точки - приближаемся к камере
+                            // rassert(distance_from_surface < distance_to_camera * 1.01, 23871297312033573); // проверяем что chooseIntersectedFacet справился со своей задачей "остановиться когда мы дойдем до ячейки содержащей камеру"
+                            rassert(distance_to_camera2 > prev_distance_to_camera * 0.99, 23582375723573); // проверяем что новая плоскость дальше от камеры чем предыдущая
+                        }
+                        prev_distance_to_camera = distance_to_camera2;
+                        prev_distance = distance_from_surface;
+
+                        // увеличиваем пропускную способность на треугольнике-ребре (в направлении от края к точке)
+                        double capacity = std::max(0.0, std::min(LAMBDA_OUT * (1.0 - std::exp(-(distance_from_surface * distance_from_surface) / (2.0 * sigma * sigma))), LAMBDA_OUT));
+                        rassert(capacity > prev_capacity * 0.99, 456845678347573);
+                        prev_capacity = capacity;
+
+                        if (SET_CAPACITIES_FOR_EXT_POINTS) {
+                            next_cell->info().facets_capacities[next_cell_facet_subindex] += capacity;
+                        }
+                        if (prev_distance <= sigma * N_SIGMAS_EXTEND_DIST) {
+                            cell_after_point_extended = prev_cell;
+                        }
+                    }
+                }
+
+                // cell_handle_t cell_after_point_extended = proxy->triangulation.locate(to_cgal_point(point0_extended));
                 if (!proxy->triangulation.is_infinite(cell_after_point_extended)) {
                     cell_after_point_extended->info().t_capacity += LAMBDA_IN;
                 } else {
